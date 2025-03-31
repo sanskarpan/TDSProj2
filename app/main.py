@@ -87,6 +87,19 @@ async def debug_function(
 
         return {"error": str(e), "traceback": traceback.format_exc()}
 
+# Simple test endpoint for health checks
+@app.get("/")
+def read_root():
+    return {"status": "alive", "message": "IITM Assignment API is running"}
+
+# For Vercel serverless function support
+try:
+    from mangum import Mangum
+    handler = Mangum(app)
+except ImportError:
+    # If mangum is not installed, just pass
+    pass
+
 
 if __name__ == "__main__":
     import uvicorn
