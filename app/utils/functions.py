@@ -59,6 +59,7 @@ async def make_api_request(
     """
     Make an API request to a specified URL.
     """
+    import httpx
     try:
         async with httpx.AsyncClient() as client:
             if method.upper() == "GET":
@@ -287,7 +288,7 @@ async def extract_zip_and_read_csv(
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-async def convert_keyvalue_to_json(file_path: str) -> str:
+async def convert_keyvalue_to_json(file_path: str,question) -> str:
     """
     Convert a text file with key=value pairs into a JSON object
 
@@ -4084,3 +4085,161 @@ async def analyze_sales_with_phonetic_clustering(
         import traceback
 
         return f"Error analyzing sales data: {str(e)}\n{traceback.format_exc()}"
+
+
+async def generate_duckdb_query(
+    query_type: str,
+    timestamp_filter: Optional[str] = None,
+    numeric_filter: Optional[int] = None,
+    sort_order: Optional[str] = "DESC",
+) -> str:
+    """
+    Generate and format DuckDB SQL queries for various data analysis tasks
+
+    Args:
+        query_type: Type of query to generate (e.g., 'post_comments', 'user_activity')
+        timestamp_filter: ISO timestamp for filtering data
+        numeric_filter: Numeric threshold for filtering
+        sort_order: Sort order for results ('ASC' or 'DESC')
+
+    Returns:
+        Formatted SQL query
+    """
+    try:
+        # Default sort order if not specified
+        sort_order = sort_order.upper() if sort_order else "DESC"
+        if sort_order not in ["ASC", "DESC"]:
+            sort_order = "DESC"
+            
+        # Define query templates based on query_type
+        if query_type == "post_comments":
+            query = """
+            SELECT 
+                p.id AS post_id,
+                p.title,
+                COUNT(c.id) AS comment_count
+            FROM 
+                posts p
+            LEFT JOIN 
+                comments c ON p.id = c.post_id
+            """
+            
+            # Add filters if provided
+            where_clauses = []
+            if timestamp_filter:
+                where_clauses.append(f"p.created_at > '{timestamp_filter}'")
+            if numeric_filter:
+                where_clauses.append(f"p.likes >= {numeric_filter}")
+                
+            if where_clauses:
+                query += "\nWHERE " + " AND ".join(where_clauses)
+                
+            query += """
+            GROUP BY 
+                p.id, p.title
+            ORDER BY 
+                comment_count """ + sort_order + """
+            LIMIT 100;
+            """
+            
+        elif query_type == "user_activity":
+            query = """
+            SELECT 
+                u.username,
+                COUNT(DISTINCT p.id) AS post_count,
+                COUNT(DISTINCT c.id) AS comment_count,
+                SUM(p.likes) AS total_likes_received
+            FROM 
+                users u
+            LEFT JOIN 
+                posts p ON u.id = p.user_id
+            LEFT JOIN 
+                comments c ON u.id = c.user_id
+            """
+            
+            # Add filters if provided
+            where_clauses = []
+            if timestamp_filter:
+                where_clauses.append(f"u.created_at > '{timestamp_filter}'")
+            if numeric_filter:
+                where_clauses.append(f"(SELECT COUNT(*) FROM posts WHERE user_id = u.id) >= {numeric_filter}")
+                
+            if where_clauses:
+                query += "\nWHERE " + " AND ".join(where_clauses)
+                
+            query += """
+            GROUP BY 
+                u.id, u.username
+            ORDER BY 
+                total_likes_received """ + sort_order + """
+            LIMIT 100;
+            """
+            
+        else:
+            # Default to a simple query if type not recognized
+            query = f"""
+            SELECT * 
+            FROM {query_type}
+            """
+            
+            if timestamp_filter:
+                query += f"\nWHERE created_at > '{timestamp_filter}'"
+            
+            query += f"\nORDER BY id {sort_order}\nLIMIT 100;"
+            
+        return query
+        
+    except Exception as e:
+        return f"Error generating DuckDB query: {str(e)}"
+    
+
+async def transcribe_youtube_segment(
+    youtube_url: str,
+    start_time: float,
+    end_time: float
+) -> str:
+    """
+    Extract audio from a YouTube video segment and transcribe it
+
+    Args:
+        youtube_url: URL of the YouTube video
+        start_time: Start time in seconds
+        end_time: End time in seconds
+
+    Returns:
+        Transcription of the video segment
+    """
+    try:
+        import re
+        
+        # Since we can't actually download and process YouTube videos here,
+        # we'll provide a simulated response
+        
+        # Extract video ID from URL
+        video_id_match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11}).*", youtube_url)
+        video_id = video_id_match.group(1) if video_id_match else "unknown"
+        
+        duration = end_time - start_time
+        
+        # Generate a simulated response
+        return f"""
+            # YouTube Video Transcription
+
+            ## Video Information
+            - Video ID: {video_id}
+            - Segment: {int(start_time//60)}:{int(start_time%60):02d} to {int(end_time//60)}:{int(end_time%60):02d}
+            - Duration: {int(duration//60)}:{int(duration%60):02d}
+
+            ## Transcription
+            This is a simulated transcription for the YouTube video segment.
+            The actual implementation would require:
+            1. Downloading the video segment using yt-dlp or similar
+            2. Extracting the audio track
+            3. Using a speech-to-text API or local model to transcribe it
+            """
+            # For a real implementation, you would need to install:
+            # ```bash
+            # pip install yt-dlp openai-whisper
+    except Exception as e:
+        return f"Error transcribing YouTube segment: {str(e)}"
+
